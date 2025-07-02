@@ -1,0 +1,16 @@
+(library
+ (public_name MiniRust)
+ (name MiniRust)
+ (modules ast lexer parser type codegen)
+ (libraries x86_64)
+ (preprocess (pps ppx_deriving.show)))
+
+(rule
+ (targets lexer.ml)
+ (deps lexer.mll)
+ (action (run ocamllex %{deps})))
+
+(rule
+ (targets parser.ml parser.mli)
+ (deps parser.mly)
+ (action (run menhir --explain %{deps})))
