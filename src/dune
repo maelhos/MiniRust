@@ -1,3 +1,5 @@
+
+
 (library
  (public_name minirust)
  (name minirust)
@@ -5,12 +7,7 @@
  (libraries x86_64)
  (preprocess (pps ppx_deriving.show)))
 
-(rule
- (targets lexer.ml)
- (deps lexer.mll)
- (action (run ocamllex %{deps})))
-
-(rule
- (targets parser.ml parser.mli)
- (deps parser.mly)
- (action (run menhir --explain %{deps} --infer)))
+(ocamllex lexer)
+ 
+(menhir
+ (modules parser))

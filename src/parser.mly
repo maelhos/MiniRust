@@ -29,12 +29,12 @@
 %nonassoc DOT
 
 (* Start symbol *)
-%start file
-%type <Ast.program> file
+%start program
+%type <Ast.program> program
 
 %%
 
-file:
+program:
   | functions=option(list(decl)) EOF { opt_lst functions }
 
 %inline
@@ -43,15 +43,15 @@ struct_field:
 
 %inline 
 decl_struct:
-  | STRUCT name=IDENTIFIER LBRACE fields=option(separated_list(COMMA, struct_field)) RBRACE
-    { DeclStruct {name=name, fields=opt_lst fields} }
+  | STRUCT id=IDENTIFIER LBRACE flist=option(separated_list(COMMA, struct_field)) RBRACE
+    { DeclStruct {name=id; fields=opt_lst flist} }
 
 %inline 
 decl_fun:
-  | FN name=IDENTIFIER LPAREN params=option(separated_list(COMMA, param)) RPAREN 
+  | FN id=IDENTIFIER LPAREN params=option(separated_list(COMMA, param)) RPAREN 
     return_typ = option(preceded(ARROW, rtype))
     LBRACE body=block RBRACE
-    { DeclFun {name=name, params=opt_lst params, rtype=return_typ, body=body} }
+    { DeclFun {name=id; params=opt_lst params; rtype=return_typ; body=body} }
 
 decl:
   | decl_fun | decl_struct { $1 }
@@ -80,7 +80,7 @@ instr:
   | LET is_mut=option(MUT) IDENTIFIER ASSIGN exp=expr SEMICOLON { Some (InstrLetExpr (Option.is_some is_mut, exp)) }
   | LET is_mut=option(MUT) IDENTIFIER ASSIGN 
     id=IDENTIFIER LBRACE fields=option(separated_list(COMMA, let_field)) RBRACE SEMICOLON
-    { Some (InstrLetStruct (Option.is_some is_mut, id, fields)) }
+    { Some (InstrLetStruct (Option.is_some is_mut, id, opt_lst fields)) }
   | WHILE exp=expr body=block { Some (InstrWhile (exp, body)) }
   | RETURN exp=option(expr) SEMICOLON { Some (InstrReturn exp) }
   | nif=rif { Some (InstrIf nif) }
@@ -90,6 +90,28 @@ rif:
   | IF exp=expr then_body=block ELSE else_body=block { IfElse (exp, then_body, Some else_body) }
   | IF exp=expr then_body=block ELSE nif=rif { IfElif (exp, then_body, nif) }
 
+%inline
+binop: 
+  | EQ      { OpEQ      }
+  | NE      { OpNE      }
+  | LT      { OpLT      }
+  | GT      { OpGT      }
+  | LE      { OpLE      }
+  | GE      { OpGE      }
+  | AND     { OpAND     }
+  | OR      { OpOR      }
+  | PLUS    { OpPLUS    }
+  | MINUS   { OpMINUS   }
+  | STAR    { OpSTAR    }
+  | SLASH   { OpSLASH   }
+  | PERCENT { OpPERCENT }
+
+%inline
+unop: 
+  | NOT    { OpNOT }
+  | REF    { OpREF }
+  | REFMUT { OpREFMUT }
+
 expr:
   | i=INTEGER { ExprInt i}
   | TRUE { ExprBool true }
@@ -97,8 +119,8 @@ expr:
   | id=IDENTIFIER { ExprIdent id }
   | exp_l=expr op=binop exp_r=expr { ExprBinop (exp_l, op, exp_r) }
   | op=unop exp=expr { ExprUnop (op, exp) }
-  | MINUS exp=expr %prec UMINUS { ExprUnop (MINUS, exp) }
-  | STAR exp=expr %prec USTAR { ExprUnop (STAR, exp) }
+  | MINUS exp=expr %prec UMINUS { ExprUnop (OpMINUS, exp) }
+  | STAR exp=expr %prec USTAR { ExprUnop (OpSTAR, exp) }
   | exp=expr DOT id=IDENTIFIER { ExprField (exp, id) }
   | exp=expr DOT len_id=IDENTIFIER LPAREN RPAREN { if len_id = "len" then 
     ExprLen exp else failwith("TODO: Only .len() method is implemented") }
@@ -110,9 +132,3 @@ expr:
     { if id = "print" then ExprPrint str else failwith("TODO: Only print! call macro is implemented") }
   | body=block { ExprBlock body }
   | LPAREN exp=expr RPAREN { exp }
-
-%inline
-binop: EQ | NE | LT | GT | LE | GE | AND | OR | PLUS | MINUS | STAR | SLASH | PERCENT { $1 }
-
-%inline
-unop: NOT | REF | REFMUT { $1 }
