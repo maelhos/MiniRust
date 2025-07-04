@@ -1,4 +1,4 @@
 (executable
- (public_name MiniRust)
+ (public_name minirust)
  (name main)
- (libraries MiniRust))
+ (libraries minirust))

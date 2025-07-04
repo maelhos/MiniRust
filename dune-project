@@ -1,5 +1,5 @@
 (lang dune 3.0)
 
 (package
- (name MiniRust)
+ (name minirust)
  (depends ocaml dune menhir))

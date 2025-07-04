@@ -1,6 +1,6 @@
 build:
 	@dune build
-	@rm -f MiniRust
-	@cp _build/install/default/bin/MiniRust .
+	@rm -f minirust
+	@cp _build/install/default/bin/minirust .
 
 .PHONY: build
