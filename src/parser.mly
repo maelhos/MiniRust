@@ -1,6 +1,15 @@
 %{
   open Ast
-  let opt_lst l = Option.value l ~default:[]
+
+  let detailed_syntax_error (pos: Lexing.position) msg =
+    let line = pos.pos_lnum in
+    let col = pos.pos_cnum - pos.pos_bol + 1 in
+    let filename = pos.pos_fname in
+    Printf.eprintf "File \"%s\", line %d, characters %d-%d:\n" 
+        filename line col col;
+    Printf.eprintf "Error: %s\n" msg;
+    flush stderr
+
 %}
 
 (* Token declarations *)
@@ -35,7 +44,11 @@
 %%
 
 program:
-  | functions=option(list(decl)) EOF { opt_lst functions }
+  | functions=list(decl) EOF { functions }
+  | error {
+    detailed_syntax_error $startpos($1) "Expected expression";
+    failwith "Parse error"
+  }
 
 %inline
 struct_field:
@@ -43,15 +56,15 @@ struct_field:
 
 %inline 
 decl_struct:
-  | STRUCT id=IDENTIFIER LBRACE flist=option(separated_list(COMMA, struct_field)) RBRACE
-    { DeclStruct {name=id; fields=opt_lst flist} }
+  | STRUCT id=IDENTIFIER LBRACE flist=separated_list(COMMA, struct_field) RBRACE
+    { DeclStruct {name=id; fields=flist} }
 
 %inline 
 decl_fun:
-  | FN id=IDENTIFIER LPAREN params=option(separated_list(COMMA, param)) RPAREN 
+  | FN id=IDENTIFIER LPAREN params=separated_list(COMMA, param) RPAREN 
     return_typ = option(preceded(ARROW, rtype))
-    LBRACE body=block RBRACE
-    { DeclFun {name=id; params=opt_lst params; rtype=return_typ; body=body} }
+    body=block
+    { DeclFun {name=id; params=params; rtype=return_typ; body=body} }
 
 decl:
   | decl_fun | decl_struct { $1 }
@@ -68,19 +81,20 @@ rtype:
 
 %inline
 block:
-  | LBRACE instrs=option(list(instr)) exp=option(expr) RBRACE { (List.filter_map (fun a -> a) (opt_lst instrs), exp) }
+  | LBRACE instrs=list(instr) exp=option(expr) RBRACE { (List.filter_map  (fun a -> a) instrs, exp) }
 
 %inline
 let_field:
   | id=IDENTIFIER COLON exp=expr { (id, exp) }
+
 
 instr:
   | SEMICOLON { None }
   | exp=expr SEMICOLON { Some (InstrExpr exp) }
   | LET is_mut=option(MUT) IDENTIFIER ASSIGN exp=expr SEMICOLON { Some (InstrLetExpr (Option.is_some is_mut, exp)) }
   | LET is_mut=option(MUT) IDENTIFIER ASSIGN 
-    id=IDENTIFIER LBRACE fields=option(separated_list(COMMA, let_field)) RBRACE SEMICOLON
-    { Some (InstrLetStruct (Option.is_some is_mut, id, opt_lst fields)) }
+    id=IDENTIFIER LBRACE fields=separated_list(COMMA, let_field) RBRACE SEMICOLON
+    { Some (InstrLetStruct (Option.is_some is_mut, id, fields)) }
   | WHILE exp=expr body=block { Some (InstrWhile (exp, body)) }
   | RETURN exp=option(expr) SEMICOLON { Some (InstrReturn exp) }
   | nif=rif { Some (InstrIf nif) }
@@ -125,9 +139,9 @@ expr:
   | exp=expr DOT len_id=IDENTIFIER LPAREN RPAREN { if len_id = "len" then 
     ExprLen exp else failwith("TODO: Only .len() method is implemented") }
   | exp1=expr LBRACK exp2=expr RBRACK { ExprBrack (exp1, exp2) }
-  | id=IDENTIFIER LPAREN args=option(separated_list(COMMA, expr)) RPAREN { ExprCall (id, opt_lst args)}
-  | id=IDENTIFIER NOT LBRACK args=option(separated_list(COMMA, expr)) RBRACK 
-    { if id = "vec" then ExprVec (opt_lst args) else failwith("TODO: Only vec! bracket macro is implemented") }
+  | id=IDENTIFIER LPAREN args=separated_list(COMMA, expr) RPAREN { ExprCall (id, args)}
+  | id=IDENTIFIER NOT LBRACK args=separated_list(COMMA, expr) RBRACK 
+    { if id = "vec" then ExprVec args else failwith("TODO: Only vec! bracket macro is implemented") }
   | id=IDENTIFIER NOT LPAREN str=STRING RPAREN 
     { if id = "print" then ExprPrint str else failwith("TODO: Only print! call macro is implemented") }
   | body=block { ExprBlock body }
