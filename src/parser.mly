@@ -81,7 +81,7 @@ rtype:
 
 %inline
 block:
-  | LBRACE instrs=list(instr) exp=option(expr) RBRACE { (List.filter_map  (fun a -> a) instrs, exp) }
+  | LBRACE instrs=separated_list(option(SEMICOLON), instr) exp=option(expr) RBRACE { (instrs, exp) }
 
 %inline
 let_field:
@@ -89,15 +89,14 @@ let_field:
 
 
 instr:
-  | SEMICOLON { None }
-  | exp=expr SEMICOLON { Some (InstrExpr exp) }
-  | LET is_mut=option(MUT) IDENTIFIER ASSIGN exp=expr SEMICOLON { Some (InstrLetExpr (Option.is_some is_mut, exp)) }
+  | exp=expr SEMICOLON { InstrExpr exp }
+  | LET is_mut=option(MUT) IDENTIFIER ASSIGN exp=expr SEMICOLON { InstrLetExpr (Option.is_some is_mut, exp) }
   | LET is_mut=option(MUT) IDENTIFIER ASSIGN 
     id=IDENTIFIER LBRACE fields=separated_list(COMMA, let_field) RBRACE SEMICOLON
-    { Some (InstrLetStruct (Option.is_some is_mut, id, fields)) }
-  | WHILE exp=expr body=block { Some (InstrWhile (exp, body)) }
-  | RETURN exp=option(expr) SEMICOLON { Some (InstrReturn exp) }
-  | nif=rif { Some (InstrIf nif) }
+    { InstrLetStruct (Option.is_some is_mut, id, fields) }
+  | WHILE exp=expr body=block { InstrWhile (exp, body) }
+  | RETURN exp=option(expr) SEMICOLON { InstrReturn exp }
+  | nif=rif { InstrIf nif }
 
 rif:
   | IF exp=expr then_body=block { IfElse (exp, then_body, None) }
