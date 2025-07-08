@@ -2,11 +2,18 @@ open Minirust
 open Lexing
 
 let usage_msg = "Usage: minirust <file>"
-let input_file = ref ""
+let input_files = ref []
+let parse_only = ref false
+let type_only = ref false
+let no_asm = ref false
 
-let set_input_file filename = input_file := filename
 
-let spec_list = []
+let set_input_file filename = input_files := filename::!input_files
+
+let speclist =
+  [("--parse-only", Arg.Set parse_only, "Only go as far as parsing");
+  ("--type-only", Arg.Set type_only, "Only go as far as typing");
+  ("--no-asm", Arg.Set no_asm, "Do not generated assembly")]
 
 let syntax_error lexbuf mess =
   let pos = lexbuf.lex_curr_p in
@@ -22,7 +29,8 @@ let syntax_error lexbuf mess =
 let compile_file filename = 
   try
     let ic = open_in filename in
-    let lexbuf = Lexing.from_channel ic in
+    let lexbuf = Lexing.from_channel ic ~with_positions:true in
+    Lexing.set_filename lexbuf filename;
     begin try
 
       (* Parse the program *)
@@ -53,9 +61,10 @@ let compile_file filename =
 
 
 let () = 
-  Arg.parse spec_list set_input_file usage_msg;
-  if !input_file = "" then begin
+
+    Arg.parse speclist set_input_file usage_msg;
+  if List .is_empty !input_files then begin
     Printf.eprintf "%s\n" usage_msg;
     exit 1
   end;
-  compile_file !input_file
+  List.iter compile_file (!input_files)

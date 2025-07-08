@@ -1,4 +1,9 @@
 
+(ocamllex lexer)
+ 
+(menhir
+ (modules parser)
+ (flags --explain))
 
 (library
  (public_name minirust)
@@ -7,8 +12,3 @@
  (libraries x86_64)
  (preprocess (pps ppx_deriving.show)))
 
-(ocamllex lexer)
- 
-(menhir
- (modules parser)
- (flags --explain))

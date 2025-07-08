@@ -1,7 +1,7 @@
 
 
 type op = OpEQ | OpNE | OpLT | OpGT | OpLE | OpGE | OpAND | OpOR | OpPLUS
-  | OpMINUS | OpSTAR | OpSLASH | OpPERCENT | OpNOT | OpREF | OpREFMUT
+  | OpMINUS | OpSTAR | OpSLASH | OpPERCENT | OpNOT | OpREF | OpREFMUT | OpASSIGN
   [@@deriving show]
   
 type expr =

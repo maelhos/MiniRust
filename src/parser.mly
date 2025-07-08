@@ -1,15 +1,6 @@
 %{
   open Ast
 
-  let detailed_syntax_error (pos: Lexing.position) msg =
-    let line = pos.pos_lnum in
-    let col = pos.pos_cnum - pos.pos_bol + 1 in
-    let filename = pos.pos_fname in
-    Printf.eprintf "File \"%s\", line %d, characters %d-%d:\n" 
-        filename line col col;
-    Printf.eprintf "Error: %s\n" msg;
-    flush stderr
-
 %}
 
 (* Token declarations *)
@@ -34,7 +25,7 @@
 %left PLUS MINUS
 %left STAR SLASH PERCENT
 %nonassoc NOT USTAR UMINUS REF REFMUT
-%nonassoc LBRACK RBRACK
+%nonassoc LBRACK (*RBRACK*)
 %nonassoc DOT
 
 (* Start symbol *)
@@ -45,10 +36,6 @@
 
 program:
   | functions=list(decl) EOF { functions }
-  | error {
-    detailed_syntax_error $startpos($1) "Expected expression";
-    failwith "Parse error"
-  }
 
 %inline
 struct_field:
@@ -79,24 +66,39 @@ rtype:
   | REFMUT typ=rtype { TyRefMut typ }
   | REF typ=rtype { TyRef typ }
 
-%inline
-block:
-  | LBRACE instrs=separated_list(option(SEMICOLON), instr) exp=option(expr) RBRACE { (instrs, exp) }
+block_content:
+  | first=instr rest=block_ending {
+      let (instrs, expr_opt) = rest in
+      (first :: instrs, expr_opt)
+    }
+  | last=expr { ([], Some last) }
+  | SEMICOLON bc=block_ending { bc }
 
+block_ending:
+  | { ([], None) }
+  | next=block_content { next }
+
+block:
+  | LBRACE RBRACE { ([], None) }
+  | LBRACE bc=block_content RBRACE { bc }
+  
 %inline
 let_field:
   | id=IDENTIFIER COLON exp=expr { (id, exp) }
 
-
-instr:
+stmt:
   | exp=expr SEMICOLON { InstrExpr exp }
   | LET is_mut=option(MUT) IDENTIFIER ASSIGN exp=expr SEMICOLON { InstrLetExpr (Option.is_some is_mut, exp) }
-  | LET is_mut=option(MUT) IDENTIFIER ASSIGN 
+  | LET is_mut=option(MUT) IDENTIFIER ASSIGN
     id=IDENTIFIER LBRACE fields=separated_list(COMMA, let_field) RBRACE SEMICOLON
     { InstrLetStruct (Option.is_some is_mut, id, fields) }
-  | WHILE exp=expr body=block { InstrWhile (exp, body) }
   | RETURN exp=option(expr) SEMICOLON { InstrReturn exp }
+
+instr:
+  | s=stmt { s }
+  | WHILE exp=expr body=block { InstrWhile (exp, body) }
   | nif=rif { InstrIf nif }
+
 
 rif:
   | IF exp=expr then_body=block { IfElse (exp, then_body, None) }
@@ -106,6 +108,7 @@ rif:
 %inline
 binop: 
   | EQ      { OpEQ      }
+  | ASSIGN  { OpASSIGN  }
   | NE      { OpNE      }
   | LT      { OpLT      }
   | GT      { OpGT      }

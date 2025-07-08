@@ -17,30 +17,30 @@ echo
 
 # tous les tests passent avec rustc
 test_rustc() {
-echo -n "syntax... "
-for f in syntax/bad/*.rs; do
+echo -n "tests/syntax... "
+for f in tests/syntax/bad/*.rs; do
     if rustc $f -o a.out > /dev/null 2>&1 ; then
       echo "succès de rustc sur $f"; exit 1
     fi
 done
 echo "OK"
 
-echo -n "typing... "
-for f in syntax/good/*.rs typing/good/*.rs typing2/good/*.rs exec/*.rs exec-fail/*.rs; do
+echo -n "tests/typing... "
+for f in tests/syntax/good/*.rs tests/typing/good/*.rs tests/typing2/good/*.rs tests/exec/*.rs tests/exec-fail/*.rs; do
     rustc --emit=dep-info $f -o a.out  > /dev/null 2>&1 ||
      (echo "echec de rustc sur $f"; exit 1)
 done
-for f in typing/bad/*.rs typing2/bad/*.rs; do
+for f in tests/typing/bad/*.rs tests/typing2/bad/*.rs; do
     if rustc $f -o a.out > /dev/null 2>&1 ; then
       echo "succès de rustc sur $f"; exit 1
     fi
 done
 echo "OK"
 
-echo "exec"
-for f in exec/*.rs; do
+echo "tests/exec"
+for f in tests/exec/*.rs; do
     echo "  $f"
-    expected=exec/`basename $f .rs`.out
+    expected=tests/exec/`basename $f .rs`.out
     if rustc $f -o a.out > /dev/null 2>&1 ; then
       ./a.out > out
       if ! cmp --quiet out $expected; then
@@ -51,10 +51,10 @@ for f in exec/*.rs; do
     fi
 done
 
-echo "exec-fail"
-for f in exec-fail/*.rs; do
+echo "tests/exec-fail"
+for f in tests/exec-fail/*.rs; do
     echo "  $f"
-    expected=exec/`basename $f .rs`.out
+    expected=tests/exec/`basename $f .rs`.out
     if rustc $f -o a.out > /dev/null 2>&1 ; then
       if ./a.out > /dev/null 2>&1 ; then
           echo "n'échoue pas sur $f"; exit 1
@@ -75,7 +75,7 @@ fi;
 }
 
 
-# partie 1 : tests d'analyse syntaxique
+# partie 1 : tests d'analyse tests/syntaxique
 
 partie1 () {
 
@@ -86,7 +86,7 @@ echo "Partie 1"
 
 # les mauvais
 echo -n "mauvais "
-for f in syntax/bad/*.rs; do
+for f in tests/syntax/bad/*.rs; do
     echo -n ".";
     max=`expr $max + 1`;
     compile --parse-only $f;
@@ -104,7 +104,7 @@ echo
 
 # les bons
 echo -n "bons "
-for f in syntax/good/*.rs typing/bad/*.rs typing/good/*.rs typing2/bad/*.rs typing2/good/*.rs exec/*.rs exec-fail/*.rs; do
+for f in tests/syntax/good/*.rs tests/typing/bad/*.rs tests/typing/good/*.rs tests/typing2/bad/*.rs tests/typing2/good/*.rs tests/exec/*.rs tests/exec-fail/*.rs; do
     echo -n ".";
     max=`expr $max + 1`;
     compile --parse-only $f;
@@ -122,7 +122,7 @@ echo
 
 percent=`expr 100 \* $score / $max`;
 
-echo -n "Syntaxe : $score/$max : $percent%"; }
+echo -n "tests/syntaxe : $score/$max : $percent%"; }
 
 # partie 2 : tests d'analyse sémantique
 
@@ -136,7 +136,7 @@ max=0
 
 # les mauvais
 echo -n "mauvais "
-for f in typing/bad/*.rs; do
+for f in tests/typing/bad/*.rs; do
     echo -n ".";
     max=`expr $max + 1`;
     compile --type-only $f;
@@ -154,7 +154,7 @@ echo
 
 # les bons
 echo -n "bons "
-for f in typing/good/*.rs typing2/bad/*.rs typing2/good/*.rs exec/*.rs exec-fail/*.rs; do
+for f in tests/typing/good/*.rs tests/typing2/bad/*.rs tests/typing2/good/*.rs tests/exec/*.rs tests/exec-fail/*.rs; do
     echo -n ".";
     max=`expr $max + 1`;
     compile --type-only $f;
@@ -184,7 +184,7 @@ max=0
 
 # les mauvais
 echo -n "mauvais "
-for f in typing2/bad/*.rs; do
+for f in tests/typing2/bad/*.rs; do
     echo -n ".";
     max=`expr $max + 1`;
     compile --no-asm $f;
@@ -202,7 +202,7 @@ echo
 
 # les bons
 echo -n "bons "
-for f in typing2/good/*.rs exec/*.rs exec-fail/*.rs; do
+for f in tests/typing2/good/*.rs tests/exec/*.rs tests/exec-fail/*.rs; do
     echo -n ".";
     max=`expr $max + 1`;
     compile --no-asm $f;
@@ -235,17 +235,17 @@ max=0
 
 echo
 echo "Partie 3"
-echo "Execution normale"
+echo "tests/execution normale"
 echo "-----------------"
 
 # timeout="why3-cpulimit 30 0 -h"
 timeout=""
 
-for f in exec/*.rs; do
+for f in tests/exec/*.rs; do
     echo -n "."
-    asm=exec/`basename $f .rs`.s
+    asm=tests/exec/`basename $f .rs`.s
     rm -f $asm
-    expected=exec/`basename $f .rs`.out
+    expected=tests/exec/`basename $f .rs`.out
     max=`expr $max + 1`;
     if compile $f; then
 	rm -f out
@@ -269,12 +269,12 @@ for f in exec/*.rs; do
 done
 echo
 
-echo "Execution conduisant à un échec"
+echo "tests/execution conduisant à un échec"
 echo "-------------------------------"
 
-for f in exec-fail/*.rs; do
+for f in tests/exec-fail/*.rs; do
     echo -n "."
-    asm=exec-fail/`basename $f .rs`.s
+    asm=tests/exec-fail/`basename $f .rs`.s
     rm -f $asm
     max=`expr $max + 1`;
     if compile $f && gcc $asm; then

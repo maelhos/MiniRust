@@ -2,11 +2,7 @@
   open Parser
   exception LexError of string
  
-  let pos_lnum = ref 0;;
-
-  let next_line () = 
-    pos_lnum := !pos_lnum + 1; 
-		()
+	let comment_depth = ref 0;;
   
 	let parse_string_literal s =
 		let len = String.length s in
@@ -45,9 +41,9 @@ let string_literal = '"' ([^ '"' '\\'] | '\\' ['"' '\\' 'n'])* '"'
 
 rule token = parse
   | whitespace+ { token lexbuf }
-  | newline { next_line (); token lexbuf }
+  | newline { Lexing.new_line lexbuf; token lexbuf }
   | "//" [^ '\n']* { token lexbuf }  (* Single line comments *)
-  | "/*" { comment lexbuf }          (* Multi-line comments *)
+  | "/*" { comment_depth := !comment_depth + 1; comment lexbuf }          (* Multi-line comments *)
   
   (* Keywords *)
   | "fn" { FN }
@@ -84,6 +80,7 @@ rule token = parse
   (* Delimiters *)
   | "("  { LPAREN }
   | ")"  { RPAREN }
+
   | "{"  { LBRACE }
   | "}"  { RBRACE }
   | "["  { LBRACK }
@@ -92,7 +89,7 @@ rule token = parse
   | ","  { COMMA }
   | ":"  { COLON }
   | "->" { ARROW }
-  
+
   (* Literals *)
   | integer as i { INTEGER (int_of_string i) }
   | identifier as id { IDENTIFIER id }
@@ -101,7 +98,9 @@ rule token = parse
   | _ as c { raise (LexError ("Unexpected character: " ^ String.make 1 c)) }
 
 and comment = parse
-  | "*/" { token lexbuf }
-  | newline { next_line (); comment lexbuf }
-  | _ { comment lexbuf }
+  | "*/" { comment_depth := !comment_depth - 1;
+					if !comment_depth = 0 then token lexbuf else comment lexbuf }
+  | newline { Lexing.new_line lexbuf; comment lexbuf }
+	| "/*" { comment_depth := !comment_depth + 1; comment lexbuf }
+	| _ { comment lexbuf }
   | eof { raise (LexError "Unterminated comment") }
