@@ -15,15 +15,20 @@ let speclist =
   ("--type-only", Arg.Set type_only, "Only go as far as typing");
   ("--no-asm", Arg.Set no_asm, "Do not generated assembly")]
 
-let syntax_error lexbuf mess =
-  let pos = lexbuf.lex_curr_p in
-  let line = pos.pos_lnum in
-  let col = pos.pos_cnum - pos.pos_bol + 1 in
-  let filename = pos.pos_fname in
+let error err_type loc mess =
+  let pos1 = fst loc in
+  let line1 = pos1.pos_lnum in
+  let col1 = pos1.pos_cnum - pos1.pos_bol + 1 in
+  let pos2 = snd loc in
+  let col2 = pos2.pos_cnum - pos1.pos_bol + 1 in
+  let filename = pos1.pos_fname in
   Printf.eprintf "File \"%s\", line %d, characters %d-%d:\n" 
-    filename line col col;
-  Printf.eprintf "Error: %s\n" mess;
+    filename line1 col1 col2;
+  Printf.eprintf "%d | %s error: %s\n" line1 err_type mess;
   flush stderr
+
+let syntax_error = error "Syntax"
+let type_error = error "Type"
 
 
 let compile_file filename = 
@@ -39,19 +44,25 @@ let compile_file filename =
       
       Printf.printf "Parsed successfully!\n";
       Printf.printf "AST: %s\n" (Ast.show_program ast);
-      
-      (* TODO: Add semantic analysis *)
-      (* let typed_ast = Semantic.analyze ast in *)
-      
-      (* TODO: Add code generation *)
-      (* let code = Codegen.generate typed_ast in *)
+
+      if not !parse_only then begin
+        let typed_ast = Semantic.analyze ast in
+
+        Printf.printf "Typed successfully!\n";
+        Printf.printf "AST: %s\n" (Ast.show_program typed_ast)
+
+        (* TODO: Add code generation *)
+        (* let code = Codegen.generate typed_ast in *)
+    end
     with
+    | Semantic.SemanticError (msg, loc) ->
+      type_error loc msg; exit 1
     | Lexer.LexError msg -> 
-        Printf.eprintf "Lexer error: %s\n" msg; exit 1
+      syntax_error (lexbuf.lex_curr_p, lexbuf.lex_curr_p) msg; exit 1
     | Parser.Error -> 
-      syntax_error lexbuf "Parser error\n"; exit 1
+      syntax_error (lexbuf.lex_curr_p, lexbuf.lex_curr_p) "Unexpected token"; exit 1
     | _ -> 
-        Printf.eprintf "Syntax error\n"; exit 1
+        Printf.eprintf "Unknown error\n"; exit 1
     end
   with
   | Sys_error msg -> 

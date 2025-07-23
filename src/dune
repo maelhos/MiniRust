@@ -8,7 +8,7 @@
 (library
  (public_name minirust)
  (name minirust)
- (modules ast lexer parser type codegen)
+ (modules ast lexer parser type semantic codegen)
  (libraries x86_64)
  (preprocess (pps ppx_deriving.show)))
 
