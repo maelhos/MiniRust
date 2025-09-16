@@ -1,0 +1,23 @@
+version = 0.27.0
+margin = 200
+profile = conventional
+break-before-in = fit-or-vertical
+break-cases = fit-or-vertical
+break-collection-expressions = fit-or-vertical
+break-fun-decl = fit-or-vertical
+break-fun-sig = fit-or-vertical
+break-infix = fit-or-vertical
+
+break-separators = after
+break-string-literals = never
+break-struct = force
+
+field-space = tight
+cases-matching-exp-indent = normal
+space-around-records = false
+space-around-lists = false
+space-around-arrays = false
+space-around-records = false
+space-around-variants = false
+cases-exp-indent=4
+cases-matching-exp-indent=compact

@@ -1,6 +1,5 @@
-
 (ocamllex lexer)
- 
+
 (menhir
  (modules parser)
  (flags --explain))
@@ -8,7 +7,7 @@
 (library
  (public_name minirust)
  (name minirust)
- (modules ast lexer parser type semantic codegen)
+ (modules ast anot lexer parser type semantic codegen)
  (libraries x86_64)
- (preprocess (pps ppx_deriving.show)))
-
+ (preprocess
+  (pps ppx_deriving.show)))

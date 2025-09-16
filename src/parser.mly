@@ -1,6 +1,5 @@
 %{
   open Ast
-
 %}
 
 (* Token declarations *)
@@ -30,7 +29,7 @@
 
 (* Start symbol *)
 %start program
-%type <Ast.program> program
+%type <loc Ast.program> program
 
 %%
 
@@ -88,10 +87,10 @@ let_field:
 
 stmt:
   | exp=expr SEMICOLON { InstrExpr (exp, $loc) }
-  | LET is_mut=option(MUT) IDENTIFIER ASSIGN exp=expr SEMICOLON { InstrLetExpr (Option.is_some is_mut, exp, $loc) }
-  | LET is_mut=option(MUT) IDENTIFIER ASSIGN
-    id=IDENTIFIER LBRACE fields=separated_list(COMMA, let_field) RBRACE SEMICOLON
-    { InstrLetStruct (Option.is_some is_mut, id, fields, $loc) }
+  | LET is_mut=option(MUT) id=IDENTIFIER ASSIGN exp=expr SEMICOLON { InstrLetExpr (Option.is_some is_mut, id, exp, $loc) }
+  | LET is_mut=option(MUT) id=IDENTIFIER ASSIGN
+    id_struct=IDENTIFIER LBRACE fields=separated_list(COMMA, let_field) RBRACE SEMICOLON
+    { InstrLetStruct (Option.is_some is_mut, id, id_struct, fields, $loc) }
   | RETURN exp=option(expr) SEMICOLON { InstrReturn (exp, $loc) }
 
 instr:
@@ -139,12 +138,12 @@ expr:
   | STAR exp=expr %prec USTAR { ExprUnop (OpSTAR, exp, $loc) }
   | exp=expr DOT id=IDENTIFIER { ExprField (exp, id, $loc) }
   | exp=expr DOT len_id=IDENTIFIER LPAREN RPAREN { if len_id = "len" then 
-    ExprLen (exp, $loc) else failwith("TODO: Only .len() method is implemented") }
+    ExprLen (exp, $loc) else raise (SpecialError "Only .len() method is implemented") }
   | exp1=expr LBRACK exp2=expr RBRACK { ExprBrack (exp1, exp2, $loc) }
   | id=IDENTIFIER LPAREN args=separated_list(COMMA, expr) RPAREN { ExprCall (id, args, $loc)}
   | id=IDENTIFIER NOT LBRACK args=separated_list(COMMA, expr) RBRACK 
-    { if id = "vec" then ExprVec (args, $loc) else failwith("TODO: Only vec! bracket macro is implemented") }
+    { if id = "vec" then ExprVec (args, $loc) else raise (SpecialError "Only vec! bracket macro is implemented") }
   | id=IDENTIFIER NOT LPAREN str=STRING RPAREN 
-    { if id = "print" then ExprPrint (str, $loc) else failwith("TODO: Only print! call macro is implemented") }
+    { if id = "print" then ExprPrint (str, $loc) else raise (SpecialError "Only print! macro is implemented") }
   | body=block { ExprBlock (body, $loc) }
   | LPAREN exp=expr RPAREN { exp }
