@@ -148,8 +148,8 @@ let pr_list fmt pr = function
   | [] -> ()
   | [i] -> pr fmt i
   | i :: ll ->
-      pr fmt i;
-      List.iter (fun i -> fprintf fmt ", %a" pr i) ll
+    pr fmt i;
+    List.iter (fun i -> fprintf fmt ", %a" pr i) ll
 
 let pr_ilist fmt l = pr_list fmt (fun fmt i -> fprintf fmt "%i" i) l
 let pr_alist fmt l = pr_list fmt (fun fmt (a : label) -> fprintf fmt "%s" a) l
@@ -309,8 +309,8 @@ let rec pr_asm fmt = function
   | Nop -> ()
   | S s -> fprintf fmt "%s" s
   | Cat (a1, a2) ->
-      pr_asm fmt a1;
-      pr_asm fmt a2
+    pr_asm fmt a1;
+    pr_asm fmt a2
 
 let print_program fmt p =
   fprintf fmt "\t.text\n";

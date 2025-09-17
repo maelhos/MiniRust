@@ -98,7 +98,6 @@ instr:
   | WHILE exp=expr body=block { InstrWhile (exp, body, $loc) }
   | nif=rif { InstrIf (nif, $loc) }
 
-
 rif:
   | IF exp=expr then_body=block { IfElse (exp, then_body, None, $loc) }
   | IF exp=expr then_body=block ELSE else_body=block { IfElse (exp, then_body, Some else_body, $loc) }

@@ -57,30 +57,28 @@ let compile_file filename =
          (* let code = Codegen.generate typed_ast in *))
      with
     | Semantic.SemanticError (msg, loc) ->
-        type_error loc ic msg;
-        exit 1
+      type_error loc ic msg;
+      exit 1
     | Lexer.LexError msg ->
-        syntax_error (lexbuf.lex_start_p, lexbuf.lex_curr_p) ic msg;
-        exit 1
+      syntax_error (lexbuf.lex_start_p, lexbuf.lex_curr_p) ic msg;
+      exit 1
     | Ast.SpecialError msg ->
-        syntax_error (lexbuf.lex_start_p, lexbuf.lex_curr_p) ic msg;
-        exit 1
+      syntax_error (lexbuf.lex_start_p, lexbuf.lex_curr_p) ic msg;
+      exit 1
     | Parser.Error ->
-        syntax_error
-          (lexbuf.lex_start_p, lexbuf.lex_curr_p)
-          ic "Unexpected token";
-        exit 1
+      syntax_error (lexbuf.lex_start_p, lexbuf.lex_curr_p) ic "Unexpected token";
+      exit 1
     | _ ->
-        Printf.eprintf "Unknown error\n";
-        exit 1);
+      Printf.eprintf "Unknown error\n";
+      exit 1);
     close_in ic
   with
   | Sys_error msg ->
-      Printf.eprintf "Sys error: %s\n" msg;
-      exit 1
+    Printf.eprintf "Sys error: %s\n" msg;
+    exit 1
   | ex ->
-      Printf.eprintf "Unexpected error : %s\n" (Printexc.to_string ex);
-      exit 1
+    Printf.eprintf "Unexpected error : %s\n" (Printexc.to_string ex);
+    exit 1
 
 let () =
   Arg.parse speclist set_input_file usage_msg;
