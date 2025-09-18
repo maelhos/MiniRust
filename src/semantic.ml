@@ -9,12 +9,49 @@ module Smap = Map.Make (String)
 type env = {
   vars: anot Smap.t;
   structs: typ Smap.t Smap.t;
-  funs: (typ list * typ) Smap.t;
+  funs: (anot list * typ) Smap.t;
   curr_fun_rt: typ option;
 }
 
-let name_taken (name : string) (ev : env) : bool =
-  Smap.mem name ev.vars || Smap.mem name ev.structs || Smap.mem name ev.funs
+let print_smap (pp : 'a -> unit) (l : 'a Smap.t) : unit =
+  print_string "[ ";
+  List.iter
+    (fun (k, v) ->
+      print_string k;
+      print_string ": ";
+      pp v;
+      print_char ' ')
+    (Smap.to_list l);
+  print_char ']'
+
+let print_env (ev : env) : unit =
+  print_string "{\n  vars:  ";
+  print_smap (fun a -> print_string (show_anot a)) ev.vars;
+  print_string "\n  structs:  ";
+  print_smap
+    (fun ap -> print_smap (fun bp -> print_string (show_typ bp)) ap)
+    ev.structs;
+  print_string "\n  funs:  ";
+  print_smap
+    (fun (a, t) ->
+      print_char '(';
+      List.iter (fun b -> print_string (show_anot b)) a;
+      print_string " : ";
+      print_string (show_typ t);
+      print_char ')')
+    ev.funs;
+  print_string "\n  curr_fun_rt:  ";
+  (match ev.curr_fun_rt with
+  | Some t -> print_string (string_of_typ t)
+  | None -> print_string "()");
+  print_string "\n}\n";
+  flush stdout
+
+let err (l : loc) fmt : 'a =
+  Printf.ksprintf (fun s -> raise (SemanticError (s, l))) fmt
+
+let check (b : bool) (l : loc) fmt : 'a =
+  Printf.ksprintf (fun s -> if not b then raise (SemanticError (s, l))) fmt
 
 let rec analyse_ty (p : loc ty) (ev : env) : anot ty * typ =
   match p with
@@ -25,8 +62,7 @@ let rec analyse_ty (p : loc ty) (ev : env) : anot ty * typ =
     | _ when Smap.mem tname ev.structs ->
       let rt = TypStruct tname in
       (TyBasic (tname, typ_anot l rt), rt)
-    | _ -> raise (SemanticError (Printf.sprintf "Unknown type \"%s\"" tname, l))
-    )
+    | _ -> err l "Unknown type \"%s\"" tname)
   | TyRef (t, l) ->
     let at, st = analyse_ty t ev in
     let rt = TypRef st in
@@ -36,12 +72,8 @@ let rec analyse_ty (p : loc ty) (ev : env) : anot ty * typ =
     let rt = TypMutRef st in
     (TyRefMut (at, typ_anot l rt), rt)
   | TyTemplate (tname, t, l) ->
-    if tname <> "Vec" then
-      raise
-        (SemanticError
-           ( Printf.sprintf
-               "Unknown template type \"%s\" (only Vec is implemented)" tname,
-             l ));
+    check (tname = "Vec") l
+      "Unknown template type \"%s\" (only Vec is implemented)" tname;
     let at, st = analyse_ty t ev in
     let rt = TypVec st in
     (TyTemplate (tname, at, typ_anot l rt), rt)
@@ -51,10 +83,7 @@ let rec analyse_expr (p : loc expr) (ev : env) : anot expr * typ =
   | ExprInt (v, l) -> (ExprInt (v, typ_anot l TypI32), TypI32)
   | ExprBool (v, l) -> (ExprBool (v, typ_anot l TypBool), TypBool)
   | ExprIdent (name, l) ->
-    if Smap.mem name ev.vars then
-      raise
-        (SemanticError
-           (Printf.sprintf "Unknown variable identifier \"%s\"" name, l));
+    check (Smap.mem name ev.vars) l "Unknown variable identifier \"%s\"" name;
     let an = Smap.find name ev.vars in
     (ExprIdent (name, an), an.ty)
   | ExprBinop (e1, op, e2, l) -> (
@@ -62,76 +91,51 @@ let rec analyse_expr (p : loc expr) (ev : env) : anot expr * typ =
     let ae2, t2 = analyse_expr e2 ev in
     match op with
     | OpEQ | OpNE | OpLT | OpLE | OpGT | OpGE ->
-      if t1 <> TypI32 || t2 <> TypI32 then
-        raise
-          (SemanticError
-             ( Printf.sprintf "Operator \"%s\" expect variables of type i32"
-                 (string_of_op op),
-               l ));
+      check
+        (t1 = TypI32 && t2 = TypI32)
+        l "Operator \"%s\" expects variables of type i32" (string_of_op op);
       (ExprBinop (ae1, op, ae2, typ_anot l TypBool), TypBool)
     | OpPLUS | OpMINUS | OpSTAR | OpSLASH | OpPERCENT ->
-      if t1 <> TypI32 || t2 <> TypI32 then
-        raise
-          (SemanticError
-             ( Printf.sprintf "Operator \"%s\" expect variables of type i32"
-                 (string_of_op op),
-               l ));
+      check
+        (t1 = TypI32 && t2 = TypI32)
+        l "Operator \"%s\" expects variables of type i32" (string_of_op op);
       (ExprBinop (ae1, op, ae2, typ_anot l TypI32), TypI32)
     | OpAND | OpOR ->
-      if t1 <> TypBool || t2 <> TypBool then
-        raise
-          (SemanticError
-             ( Printf.sprintf "Operator \"%s\" expect variables of type bool"
-                 (string_of_op op),
-               l ));
+      check
+        (t1 = TypBool && t2 = TypBool)
+        l "Operator \"%s\" expects variables of type bool" (string_of_op op);
       (ExprBinop (ae1, op, ae2, typ_anot l TypBool), TypBool)
-    | _ ->
-      raise
-        (SemanticError
-           ( Printf.sprintf "Operator \"%s\" is not a binary operator"
-               (string_of_op op),
-             l )))
+    | OpASSIGN ->
+      check (t2 <= t1) l
+        "Operator \"%s\" expects both expression to be of same type while %s and %s were provided."
+        (string_of_op op) (string_of_typ t1) (string_of_typ t2);
+      check
+        ((extract_anot_expr ae1).mut && (extract_anot_expr ae1).lval)
+        l "Operator \"%s\" expects left expression to be a mutable l-value."
+        (string_of_op op);
+      (ExprBinop (ae1, op, ae2, default_anot l), TypUnit)
+    | _ -> err l "Operator \"%s\" is not a binary operator" (string_of_op op))
   | ExprUnop (op, e, l) -> (
     let ae, t = analyse_expr e ev in
     match op with
     | OpMINUS ->
-      if t <> TypI32 then
-        raise
-          (SemanticError
-             ( Printf.sprintf "Operator \"%s\" expect variables of type i32"
-                 (string_of_op op),
-               l ));
+      check (t = TypI32) l "Operator \"%s\" expect variables of type i32"
+        (string_of_op op);
       (ExprUnop (op, ae, typ_anot l TypI32), TypI32)
     | OpNOT ->
-      if t <> TypBool then
-        raise
-          (SemanticError
-             ( Printf.sprintf "Operator \"%s\" expect variables of type bool"
-                 (string_of_op op),
-               l ));
+      check (t = TypBool) l "Operator \"%s\" expect variables of type bool"
+        (string_of_op op);
       (ExprUnop (op, ae, typ_anot l TypBool), TypBool)
     | OpREF ->
-      if not (extract_anot_expr ae).lval then
-        raise
-          (SemanticError
-             ( Printf.sprintf "Operator \"%s\" expect a l-value"
-                 (string_of_op op),
-               l ));
+      check (extract_anot_expr ae).lval l "Operator \"%s\" expect a l-value"
+        (string_of_op op);
       let rt = TypRef t in
       (ExprUnop (op, ae, typ_anot l rt), rt)
     | OpREFMUT ->
-      if not (extract_anot_expr ae).lval then
-        raise
-          (SemanticError
-             ( Printf.sprintf "Operator \"%s\" expect a l-value"
-                 (string_of_op op),
-               l ));
-      if not (extract_anot_expr ae).mut then
-        raise
-          (SemanticError
-             ( Printf.sprintf "Operator \"%s\" expect a mutable value"
-                 (string_of_op op),
-               l ));
+      check (extract_anot_expr ae).lval l "Operator \"%s\" expect a l-value"
+        (string_of_op op);
+      check (extract_anot_expr ae).mut l
+        "Operator \"%s\" expect a mutable value" (string_of_op op);
       let rt = TypMutRef t in
       (ExprUnop (op, ae, typ_anot l rt), rt)
     | OpSTAR -> (
@@ -142,131 +146,89 @@ let rec analyse_expr (p : loc expr) (ev : env) : anot expr * typ =
       | TypMutRef tr ->
         let at = var_anot l tr true in
         (ExprUnop (op, ae, at), tr)
-      | _ ->
-        raise
-          (SemanticError
-             ( Printf.sprintf "Operator \"%s\" expects a reference type"
-                 (string_of_op op),
-               l )))
-    | _ ->
-      raise
-        (SemanticError
-           ( Printf.sprintf "Operator \"%s\" is not a unary operator"
-               (string_of_op op),
-             l )))
+      | _ -> err l "Operator \"%s\" expects a reference type" (string_of_op op))
+    | _ -> err l "Operator \"%s\" is not a unary operator" (string_of_op op))
   | ExprField (e, fname, l) -> (
     let ae, t = analyse_expr e ev in
     match t with
     | TypStruct sname ->
       let struct_mems = Smap.find sname ev.structs in
-      if not (Smap.mem sname struct_mems) then
-        raise
-          (SemanticError
-             ( Printf.sprintf "Struct \"%s\" does not have a field named \"%s\""
-                 sname fname,
-               l ));
-      if not (extract_anot_expr ae).mut then
-        raise
-          (SemanticError
-             ( "Operator \".\" expects a l-valued struct or a struct reference",
-               l ));
-      let rt = Smap.find sname struct_mems in
+      check
+        (Smap.mem fname struct_mems)
+        l "Struct \"%s\" does not have a field named \"%s\"" sname fname;
+      check (extract_anot_expr ae).lval l
+        "Operator \".\" expects a l-valued struct or a struct reference";
+      let rt = Smap.find fname struct_mems in
       (ExprField (ae, fname, var_anot l rt (extract_anot_expr ae).mut), rt)
     | TypRef (TypStruct sname) ->
       let struct_mems = Smap.find sname ev.structs in
-      if not (Smap.mem sname struct_mems) then
-        raise
-          (SemanticError
-             ( Printf.sprintf "Struct \"%s\" does not have a field named \"%s\""
-                 sname fname,
-               l ));
-      let rt = Smap.find sname struct_mems in
+      print_env ev; flush stdout;
+      check
+        (Smap.mem fname struct_mems)
+        l "Struct \"%s\" does not have a field named \"%s\"" sname fname;
+      let rt = Smap.find fname struct_mems in
       (ExprField (ae, fname, var_anot l rt false), rt)
     | TypMutRef (TypStruct sname) ->
       let struct_mems = Smap.find sname ev.structs in
-      if not (Smap.mem sname struct_mems) then
-        raise
-          (SemanticError
-             ( Printf.sprintf "Struct \"%s\" does not have a field named \"%s\""
-                 sname fname,
-               l ));
-      let rt = Smap.find sname struct_mems in
+      check
+        (Smap.mem fname struct_mems)
+        l "Struct \"%s\" does not have a field named \"%s\"" sname fname;
+      let rt = Smap.find fname struct_mems in
       (ExprField (ae, fname, var_anot l rt true), rt)
     | _ ->
-      raise
-        (SemanticError
-           ( "Operator \".\" expects either a struct or a reference to a struct",
-             l )))
+      err l "Operator \".\" expects either a struct or a reference to a struct")
   | ExprLen (e, l) -> (
     let ae, t = analyse_expr e ev in
     match t with
     | TypVec _ | TypRef (TypVec _) | TypMutRef (TypVec _) ->
       (ExprLen (ae, typ_anot l TypI32), TypI32)
     | _ ->
-      raise
-        (SemanticError
-           ( "Method \".len()\" expects either a Vec<t> or a reference to Vec<t>",
-             l )))
+      err l "Method \".len()\" expects either a Vec<t> or a reference to Vec<t>"
+    )
   | ExprBrack (e1, e2, l) -> (
     let ae1, t1 = analyse_expr e1 ev in
     let ae2, t2 = analyse_expr e2 ev in
-    if t2 <> TypI32 then
-      raise
-        (SemanticError ("Array-like type can only be indexed by type i32", l));
+    check (t2 = TypI32) l "Array-like type can only be indexed by type i32";
     match t1 with
     | TypVec ti ->
-      if not (extract_anot_expr ae1).lval then
-        raise
-          (SemanticError
-             ( "Indexing an array-like requires an l-valued Vec<t> or a reference to Vec<t>",
-               l ));
+      check (extract_anot_expr ae1).lval l
+        "Indexing an array-like requires an l-valued Vec<t> or a reference to Vec<t>";
       (ExprBrack (ae1, ae2, var_anot l ti (extract_anot_expr ae1).mut), ti)
     | TypRef (TypVec ti) -> (ExprBrack (ae1, ae2, var_anot l ti false), ti)
     | TypMutRef (TypVec ti) -> (ExprBrack (ae1, ae2, var_anot l ti true), ti)
     | _ ->
-      raise
-        (SemanticError
-           ( "Indexing an array-like requires an l-valued Vec<t> or a reference to Vec<t>",
-             l )))
+      err l
+        "Indexing an array-like requires an l-valued Vec<t> or a reference to Vec<t>"
+    )
   | ExprCall (fname, el, l) ->
-    if not (Smap.mem fname ev.funs) then
-      raise
-        (SemanticError (Printf.sprintf "Undefined function \"%s\"" fname, l));
+    check (Smap.mem fname ev.funs) l "Undefined function \"%s\"" fname;
     let fun_ts, fun_ret = Smap.find fname ev.funs in
     let aels = List.map (fun e -> analyse_expr e ev) el in
     let arg_ts = List.map snd aels in
-    if List.length arg_ts <> List.length el then
-      raise
-        (SemanticError
-           ( Printf.sprintf
-               "Function \"%s\" expects %d argument while only %d were provided"
-               fname (List.length arg_ts) (List.length el),
-             l ));
+    check
+      (List.length arg_ts = List.length el)
+      l "Function \"%s\" expects %d argument while only %d were provided" fname
+      (List.length arg_ts) (List.length el);
     List.iter2
-      (fun t1 t2 ->
-        if not (t1 <= t2) then
-          raise
-            (SemanticError
-               ( Printf.sprintf
-                   "Function call for \"%s\" expected argument type %s but got %s"
-                   fname (string_of_typ t1) (string_of_typ t2),
-                 l )))
+      (fun t1 a2 ->
+        let t2 = a2.ty in
+        check (t1 <= t2) l
+          "Function call for \"%s\" expected argument type %s but got %s" fname
+          (string_of_typ t1) (string_of_typ t2))
       arg_ts fun_ts;
     (ExprCall (fname, List.map fst aels, typ_anot l fun_ret), fun_ret)
-  | ExprVec (el, l) ->
+  | ExprVec (el, l) -> (
     let aels = List.map (fun e -> analyse_expr e ev) el in
     let arg_ts = List.map snd aels in
     if List.is_empty arg_ts then
-      raise
-        (SemanticError
-           ("Macro call for vec! expects a non empty list. TODO: inference", l));
-    let ti = List.hd arg_ts in
-    if not (List.for_all (fun te -> te = ti) arg_ts) then
-      raise
-        (SemanticError
-           ("Macro call for vec! expects all elements to be of the same type", l));
-    let rt = TypVec ti in
-    (ExprVec (List.map fst aels, typ_anot l rt), rt)
+      (ExprVec (List.map fst aels, typ_anot l TypEmptyVec), TypEmptyVec)
+    else
+    match list_cast arg_ts with
+    | None ->
+      err l "Macro call for vec! expects all elements to be of the same type"
+    | Some ti ->
+      let rt = TypVec ti in
+      (ExprVec (List.map fst aels, typ_anot l rt), rt))
   | ExprPrint (s, l) -> (ExprPrint (s, default_anot l), TypUnit)
   | ExprBlock (b, l) ->
     let ab, t = analyse_block b ev in
@@ -278,32 +240,21 @@ and analyse_field_list
     (st : typ Smap.t)
     (ev : env)
     (l : loc) : anot let_field list =
-  if Smap.cardinal st <> List.length ls then
-    raise
-      (SemanticError
-         ( Printf.sprintf
-             "Struct type \"%s\" expects %d fields while only %d were provided"
-             id_struct (Smap.cardinal st) (List.length ls),
-           l ));
+  check
+    (Smap.cardinal st = List.length ls)
+    l "Struct type \"%s\" expects %d fields while only %d were provided"
+    id_struct (Smap.cardinal st) (List.length ls);
   List.map
     (fun field ->
       let fname, e, l = field in
-      if not (Smap.mem fname st) then
-        raise
-          (SemanticError
-             ( Printf.sprintf
-                 "Struct type \"%s\" does not expect a field named \"%s\""
-                 id_struct fname,
-               l ));
+      check (Smap.mem fname st) l
+        "Struct type \"%s\" does not expect a field named \"%s\"" id_struct
+        fname;
       let ae, et = analyse_expr e ev in
       let vt = Smap.find fname st in
-      if vt <> et then
-        raise
-          (SemanticError
-             ( Printf.sprintf
-                 "Struct type \"%s\" expects field named \"%s\" to be of type %s while %s was provided"
-                 id_struct fname (string_of_typ vt) (string_of_typ et),
-               l ));
+      check (et <= vt) l
+        "Struct type \"%s\" expects field named \"%s\" to be of type %s while %s was provided"
+        id_struct fname (string_of_typ vt) (string_of_typ et);
       (fname, ae, typ_anot l vt))
     ls
 
@@ -311,59 +262,32 @@ and analyse_instr_if (p : loc instr_if) (ev : env) : anot instr_if * typ =
   match p with
   | IfElse (ec, bt, None, l) ->
     let aec, tc = analyse_expr ec ev in
-    if tc <> TypBool then
-      raise
-        (SemanticError
-           ( Printf.sprintf
-               "If confition expects type bool while %s was provided."
-               (string_of_typ tc),
-             l ));
+    check (tc = TypBool) l
+      "If confition expects type bool while %s was provided." (string_of_typ tc);
     let abt, tbt = analyse_block bt ev in
-    if tbt <> TypUnit then
-      raise
-        (SemanticError
-           ( Printf.sprintf
-               "Then block exepts type unit if no else block, %s was provided."
-               (string_of_typ tbt),
-             l ));
+    check (tbt = TypUnit) l
+      "Then block exepts type unit if no else block, %s was provided."
+      (string_of_typ tbt);
     (IfElse (aec, abt, None, typ_anot l TypUnit), TypUnit)
   | IfElse (ec, bt, Some be, l) ->
     let aec, tc = analyse_expr ec ev in
-    if tc <> TypBool then
-      raise
-        (SemanticError
-           ( Printf.sprintf
-               "If confition expects type bool while %s was provided."
-               (string_of_typ tc),
-             l ));
+    check (tc = TypBool) l
+      "If confition expects type bool while %s was provided." (string_of_typ tc);
     let abt, tbt = analyse_block bt ev in
     let abe, tbe = analyse_block be ev in
-    if tbt <> tbe then
-      raise
-        (SemanticError
-           ( Printf.sprintf
-               "Then and else block exepts the sametype while %s and %s were provided."
-               (string_of_typ tbt) (string_of_typ tbe),
-             l ));
+    check (tbt = tbe) l
+      "Then and else block exepts the sametype while %s and %s were provided."
+      (string_of_typ tbt) (string_of_typ tbe);
     (IfElse (aec, abt, Some abe, typ_anot l tbe), tbe)
   | IfElif (ec, bt, ie, l) ->
     let aec, tc = analyse_expr ec ev in
-    if tc <> TypBool then
-      raise
-        (SemanticError
-           ( Printf.sprintf
-               "If confition expects type bool while %s was provided."
-               (string_of_typ tc),
-             l ));
+    check (tc = TypBool) l
+      "If confition expects type bool while %s was provided." (string_of_typ tc);
     let abt, tbt = analyse_block bt ev in
     let abe, tbe = analyse_instr_if ie ev in
-    if tbt <> tbe then
-      raise
-        (SemanticError
-           ( Printf.sprintf
-               "Then and else block exepts the sametype while %s and %s were provided."
-               (string_of_typ tbt) (string_of_typ tbe),
-             l ));
+    check (tbt = tbe) l
+      "Then and else block exepts the sametype while %s and %s were provided."
+      (string_of_typ tbt) (string_of_typ tbe);
     (IfElif (aec, abt, abe, typ_anot l tbe), tbe)
 
 and analyse_block (p : loc block) (ev : env) : anot block * typ =
@@ -388,31 +312,29 @@ and analyse_block (p : loc block) (ev : env) : anot block * typ =
       let ail, rev = analyse_instr_list tll nev in
       (InstrLetExpr (m, id, ae, default_anot l) :: ail, rev)
     | InstrLetStruct (m, id, id_struct, fl, l) :: tll ->
-      if not (Smap.mem id_struct ev.structs) then
-        raise
-          (SemanticError
-             (Printf.sprintf "No such struct type \"%s\"" id_struct, l));
+      check
+        (Smap.mem id_struct ev.structs)
+        l "No such struct type \"%s\"" id_struct;
       let st = Smap.find id_struct ev.structs in
       let ae = analyse_field_list id_struct fl st ev l in
-      let ail, rev = analyse_instr_list tll ev in
+      let nev =
+        {
+          vars= Smap.add id (var_anot l (TypStruct id_struct) m) ev.vars;
+          structs= ev.structs;
+          funs= ev.funs;
+          curr_fun_rt= ev.curr_fun_rt;
+        }
+      in
+      let ail, rev = analyse_instr_list tll nev in
       (InstrLetStruct (m, id, id_struct, ae, default_anot l) :: ail, rev)
     | InstrWhile (eb, e, l) :: tll ->
       let aeb, tb = analyse_expr eb ev in
       let ae, t = analyse_block e ev in
-      if tb <> TypBool then
-        raise
-          (SemanticError
-             ( Printf.sprintf
-                 "While condition excepts type bool while %s was provided."
-                 (string_of_typ tb),
-               l ));
-      if t <> TypUnit then
-        raise
-          (SemanticError
-             ( Printf.sprintf
-                 "While block excepts type unit while %s was provided."
-                 (string_of_typ t),
-               l ));
+      check (tb = TypBool) l
+        "While condition excepts type bool while %s was provided."
+        (string_of_typ tb);
+      check (t = TypUnit) l
+        "While block excepts type unit while %s was provided." (string_of_typ t);
       let ail, rev = analyse_instr_list tll ev in
       (InstrWhile (aeb, ae, default_anot l) :: ail, rev)
     | InstrReturn (eo, l) :: tll -> (
@@ -420,24 +342,14 @@ and analyse_block (p : loc block) (ev : env) : anot block * typ =
       match eo with
       | Some e ->
         let ae, t = analyse_expr e ev in
-        if t <> rt then
-          raise
-            (SemanticError
-               ( Printf.sprintf
-                   "A return in the current function excepts type %s while %s was provided."
-                   (string_of_typ rt) (string_of_typ t),
-                 l ));
+        check (t = rt) l
+          "A return in the current function excepts type %s while %s was provided."
+          (string_of_typ rt) (string_of_typ t);
         let ail, rev = analyse_instr_list tll ev in
         (InstrReturn (Some ae, default_anot l) :: ail, rev)
       | None ->
-        if rt <> TypUnit then
-          raise
-            (SemanticError
-               ( Printf.sprintf
-                   "A return in the current function excepts type %s unit while unit was provided."
-                   (string_of_typ rt),
-                 l ));
-
+        check (rt = TypUnit) l
+          "A return in the current function excepts type %s." (string_of_typ rt);
         let ail, rev = analyse_instr_list tll ev in
         (InstrReturn (None, default_anot l) :: ail, rev))
     | InstrIf (ii, l) :: tll ->
@@ -454,18 +366,103 @@ and analyse_block (p : loc block) (ev : env) : anot block * typ =
     ((ail, Some ae, typ_anot l t), t)
   | None -> ((ail, None, typ_anot l TypUnit), TypUnit)
 
+let analyse_fun_decl (p : loc fun_decl) (ev : env) (l : loc) :
+    anot fun_decl * env =
+  let rec aux (ls : loc param list) (m : anot Smap.t) :
+      anot param list * anot Smap.t * anot list =
+    match ls with
+    | (mu, fname, ty, l) :: tll ->
+      let aty, t = analyse_ty ty ev in
+      check
+        (not (Smap.mem fname m))
+        l "Function declaration already has an argument named %s." fname;
+      let aa = var_anot l t mu in
+      let al, rm, kl = aux tll (Smap.add fname aa m) in
+      ((mu, fname, aty, typ_anot l t) :: al, rm, aa :: kl)
+    | [] -> ([], m, [])
+  in
+  check
+    (not (Smap.mem p.name ev.funs))
+    l "Function named %s already defined." p.name;
+  let at, rt =
+    match p.rtype with
+    | Some ty ->
+      let a, t = analyse_ty ty ev in
+      (Some a, t)
+    | None -> (None, TypUnit)
+  in
+  let npl, m, anl = aux p.params Smap.empty in
+  let nev =
+    {
+      vars= Smap.union (fun _ _ a -> Some a) ev.vars m;
+      structs= ev.structs;
+      funs= Smap.add p.name (anl, rt) ev.funs;
+      curr_fun_rt= Some rt;
+    }
+  in
+  check
+    (not (is_ref_typ rt))
+    l "Function declaration expects return type not to be a reference";
+  let bo, bt = analyse_block p.body nev in
+  let isl, le, _ = bo in
+  let gbt =
+    match (List.rev isl, le) with
+    | InstrReturn (Some ire, _) :: _, None -> (extract_anot_expr ire).ty
+    | _ -> bt
+  in
+  check (rt = gbt) l
+    "Function declaration's return type does not match its definition, expected %s while %s was provided"
+    (string_of_typ rt) (string_of_typ gbt);
+  ({name= p.name; params= npl; rtype= at; body= bo}, nev)
+
+let analyse_struct_decl (p : loc struct_decl) (ev : env) (l : loc) :
+    anot struct_decl * env =
+  let rec aux (ls : loc field list) (m : typ Smap.t) (ev : env) :
+      anot field list * typ Smap.t =
+    match ls with
+    | (fname, ty, l) :: tll ->
+      let aty, t = analyse_ty ty ev in
+      check
+        (not (Smap.mem fname m))
+        l
+        "Struct declaration already has a field named %s unit while unit was provided."
+        fname;
+      check
+        (not (is_ref_typ t))
+        l "Struct declaration expects fields types not to be references.";
+      check
+        (not (t = TypStruct p.name))
+        l "Struct declaration forbids fields types to be recursive.";
+      let al, rm = aux tll (Smap.add fname t m) ev in
+      ((fname, aty, typ_anot l t) :: al, rm)
+    | [] -> ([], m)
+  in
+  check
+    (not (Smap.mem p.name ev.structs))
+    l "Struct name \"%s\" is already taken" p.name;
+  let fake_typ_ev = {
+    vars= ev.vars;
+    structs= Smap.add p.name Smap.empty ev.structs;
+    funs= ev.funs;
+    curr_fun_rt= ev.curr_fun_rt;
+  } in
+  let nf, st = aux p.fields Smap.empty fake_typ_ev in
+  ( {name= p.name; fields= nf},
+    {
+      vars= ev.vars;
+      structs= Smap.add p.name st ev.structs;
+      funs= ev.funs;
+      curr_fun_rt= ev.curr_fun_rt;
+    } )
+
 let analyse_decl (p : loc decl) (ev : env) : anot decl * env =
   match p with
   | DeclStruct (sdecl, l) ->
-    if name_taken sdecl.name ev then
-      raise
-        (SemanticError
-           (Printf.sprintf "Struct name \"%s\" is already taken" sdecl.name, l));
-    let ret_fields =
-      List.map (fun (name, ty, l) -> (name, ty, default_anot l)) sdecl.fields
-    in
-    failwith "todo"
-  | DeclFun (fdecl, l) -> failwith "todo"
+    let ad, nev = analyse_struct_decl sdecl ev l in
+    (DeclStruct (ad, default_anot l), nev)
+  | DeclFun (fdecl, l) ->
+    let ad, nev = analyse_fun_decl fdecl ev l in
+    (DeclFun (ad, default_anot l), nev)
 
 let analyze_program (p : loc program) : anot program =
   let prog, l = p in
@@ -474,7 +471,13 @@ let analyze_program (p : loc program) : anot program =
     | [] -> []
     | h :: t ->
       let nh, nev = analyse_decl h ev in
-      nh :: aux t nev
+      nh :: aux t 
+      {
+        vars= Smap.empty;
+        structs= nev.structs;
+        funs= nev.funs;
+        curr_fun_rt= None;
+      }
   in
   ( aux prog
       {

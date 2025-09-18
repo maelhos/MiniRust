@@ -1,7 +1,8 @@
 open Ast
 open Type
 
-type anot = {loc: loc; ty: typ; lval: bool; mut: bool} [@@deriving show]
+type anot = {loc: loc; [@opaque] ty: typ; lval: bool; mut: bool}
+[@@deriving show]
 
 let default_anot (l : loc) : anot =
   {loc= l; ty= TypUnit; lval= false; mut= false}

@@ -45,15 +45,13 @@ let compile_file filename =
     let lexbuf = Lexing.from_channel ic ~with_positions:true in
     Lexing.set_filename lexbuf filename;
     (try
-       (* Parse the program *)
        let ast = Parser.program Lexer.token lexbuf in
-       Printf.printf "Parsed successfully!\n";
-       Printf.printf "AST: %s\n" (Ast.show_program Ast.pp_loc ast);
+       (* Printf.printf "Parsed successfully!\n"; *)
+       (* Printf.printf "AST: %s\n" (Ast.show_program Ast.pp_loc ast); *)
        if not !parse_only then (
          let typed_ast = Semantic.analyze_program ast in
          Printf.printf "Typed successfully!\n";
          Printf.printf "AST: %s\n" (Ast.show_program Anot.pp_anot typed_ast)
-         (* TODO: Add code generation *)
          (* let code = Codegen.generate typed_ast in *))
      with
     | Semantic.SemanticError (msg, loc) ->
