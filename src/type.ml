@@ -15,7 +15,7 @@ let rec ( <= ) (t1 : typ) (t2 : typ) : bool =
   | TypMutRef a, TypRef b
   | TypRef a, TypRef b
   | TypMutRef a, TypMutRef b
-  | TypVec a, TypVec b  -> a <= b
+  | TypVec a, TypVec b -> a <= b
   | TypEmptyVec, TypVec _ -> true
   | _ -> false
 

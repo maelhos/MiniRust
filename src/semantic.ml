@@ -162,7 +162,8 @@ let rec analyse_expr (p : loc expr) (ev : env) : anot expr * typ =
       (ExprField (ae, fname, var_anot l rt (extract_anot_expr ae).mut), rt)
     | TypRef (TypStruct sname) ->
       let struct_mems = Smap.find sname ev.structs in
-      print_env ev; flush stdout;
+      print_env ev;
+      flush stdout;
       check
         (Smap.mem fname struct_mems)
         l "Struct \"%s\" does not have a field named \"%s\"" sname fname;
@@ -223,12 +224,12 @@ let rec analyse_expr (p : loc expr) (ev : env) : anot expr * typ =
     if List.is_empty arg_ts then
       (ExprVec (List.map fst aels, typ_anot l TypEmptyVec), TypEmptyVec)
     else
-    match list_cast arg_ts with
-    | None ->
-      err l "Macro call for vec! expects all elements to be of the same type"
-    | Some ti ->
-      let rt = TypVec ti in
-      (ExprVec (List.map fst aels, typ_anot l rt), rt))
+      match list_cast arg_ts with
+      | None ->
+        err l "Macro call for vec! expects all elements to be of the same type"
+      | Some ti ->
+        let rt = TypVec ti in
+        (ExprVec (List.map fst aels, typ_anot l rt), rt))
   | ExprPrint (s, l) -> (ExprPrint (s, default_anot l), TypUnit)
   | ExprBlock (b, l) ->
     let ab, t = analyse_block b ev in
@@ -297,6 +298,9 @@ and analyse_block (p : loc block) (ev : env) : anot block * typ =
     | InstrExpr (e, l) :: tll ->
       let ae, t = analyse_expr e ev in
       let ail, rev = analyse_instr_list tll ev in
+      (* check
+        (t = TypUnit)
+        l "Instruction in blocks expects type unit while %s was provided." (string_of_typ t); *)
       (InstrExpr (ae, typ_anot l t) :: ail, rev)
     | InstrLetExpr (m, id, e, l) :: tll ->
       let ae, t = analyse_expr e ev in
@@ -408,6 +412,7 @@ let analyse_fun_decl (p : loc fun_decl) (ev : env) (l : loc) :
   let gbt =
     match (List.rev isl, le) with
     | InstrReturn (Some ire, _) :: _, None -> (extract_anot_expr ire).ty
+    | InstrIf (ire, _) :: _, None -> (extract_anot_instr_if ire).ty
     | _ -> bt
   in
   check (rt = gbt) l
@@ -440,12 +445,14 @@ let analyse_struct_decl (p : loc struct_decl) (ev : env) (l : loc) :
   check
     (not (Smap.mem p.name ev.structs))
     l "Struct name \"%s\" is already taken" p.name;
-  let fake_typ_ev = {
-    vars= ev.vars;
-    structs= Smap.add p.name Smap.empty ev.structs;
-    funs= ev.funs;
-    curr_fun_rt= ev.curr_fun_rt;
-  } in
+  let fake_typ_ev =
+    {
+      vars= ev.vars;
+      structs= Smap.add p.name Smap.empty ev.structs;
+      funs= ev.funs;
+      curr_fun_rt= ev.curr_fun_rt;
+    }
+  in
   let nf, st = aux p.fields Smap.empty fake_typ_ev in
   ( {name= p.name; fields= nf},
     {
@@ -471,13 +478,14 @@ let analyze_program (p : loc program) : anot program =
     | [] -> []
     | h :: t ->
       let nh, nev = analyse_decl h ev in
-      nh :: aux t 
-      {
-        vars= Smap.empty;
-        structs= nev.structs;
-        funs= nev.funs;
-        curr_fun_rt= None;
-      }
+      nh
+      :: aux t
+           {
+             vars= Smap.empty;
+             structs= nev.structs;
+             funs= nev.funs;
+             curr_fun_rt= None;
+           }
   in
   ( aux prog
       {

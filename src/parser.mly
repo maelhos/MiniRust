@@ -86,6 +86,7 @@ let_field:
   | id=IDENTIFIER COLON exp=expr { (id, exp, $loc) }
 
 stmt:
+  | nif=rif { InstrIf (nif, $loc) }
   | exp=expr SEMICOLON { InstrExpr (exp, $loc) }
   | LET is_mut=option(MUT) id=IDENTIFIER ASSIGN exp=expr SEMICOLON { InstrLetExpr (Option.is_some is_mut, id, exp, $loc) }
   | LET is_mut=option(MUT) id=IDENTIFIER ASSIGN
@@ -96,7 +97,6 @@ stmt:
 instr:
   | s=stmt { s }
   | WHILE exp=expr body=block { InstrWhile (exp, body, $loc) }
-  | nif=rif { InstrIf (nif, $loc) }
 
 rif:
   | IF exp=expr then_body=block { IfElse (exp, then_body, None, $loc) }

@@ -9,7 +9,7 @@ module Lexing = struct
   let show_position pos = Format.asprintf "%a" pp_position pos
 end
 
-type loc = Lexing.position * Lexing.position [@@deriving show]
+type loc = (Lexing.position * Lexing.position[@opaque]) [@@deriving show]
 
 exception SpecialError of string
 

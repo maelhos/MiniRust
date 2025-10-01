@@ -36,7 +36,7 @@ let extract_anot_instr (i : 'a instr) : 'a =
   | InstrLetExpr (_, _, _, a)
   | InstrLetStruct (_, _, _, _, a)
   | InstrWhile (_, _, a)
-  | InstrReturn (_, a)
+  | InstrReturn (_, a) -> a
   | InstrIf (_, a) -> a
 
 let extract_anot_instr_if (i : 'a instr_if) : 'a =
